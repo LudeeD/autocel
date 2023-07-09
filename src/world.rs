@@ -106,8 +106,26 @@ impl SandWorld {
         down
     }
 
+    fn move_side(&mut self, x: usize, y: usize) -> bool {
+        let mut left = x > 0 && self.is_empty(x - 1, y);
+        let mut right = self.is_empty(x + 1, y);
+
+        if left && right {
+            left = rand::gen_range(0, 2) == 0;
+            right = !left;
+        }
+
+        if left {
+            self.move_cell(x, y, x - 1, y);
+        } else if right {
+            self.move_cell(x, y, x + 1, y);
+        }
+
+        left || right
+    }
+
     fn move_down_side(&mut self, x: usize, y: usize) -> bool {
-        let mut down_left = self.is_empty(x - 1, y + 1);
+        let mut down_left = x > 0 && self.is_empty(x - 1, y + 1);
         let mut down_right = self.is_empty(x + 1, y + 1);
 
         if down_left && down_right {
@@ -153,6 +171,21 @@ impl SandWorld {
                     },
                 );
             }
+        } else if is_mouse_button_down(MouseButton::Right) {
+            let coords = mouse_position();
+            let x = (coords.0 / self.scale as f32) as usize;
+            let y = (coords.1 / self.scale as f32) as usize;
+
+            if self.in_bounds(x, y) {
+                self.set_sell_by_pos(
+                    x,
+                    y,
+                    Cell {
+                        class: CellClass::Water,
+                        properties: CellProperties::MOVEDOWN | CellProperties::MOVESIDE,
+                    },
+                );
+            }
         }
 
         for x in 0..self.width {
@@ -165,6 +198,9 @@ impl SandWorld {
                 {
                 } else if (properties & CellProperties::MOVEDOWNSIDE) != CellProperties::NONE
                     && self.move_down_side(x, y)
+                {
+                } else if (properties & CellProperties::MOVESIDE) != CellProperties::NONE
+                    && self.move_side(x, y)
                 {
                 }
             }
