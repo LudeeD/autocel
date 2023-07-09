@@ -27,7 +27,33 @@ struct Cell {
     properties: CellProperties,
 }
 
+impl Cell {
+    fn empty() -> Self {
+        Self {
+            class: CellClass::Empty,
+            properties: CellProperties::NONE,
+        }
+    }
+
+    fn sand() -> Self {
+        Self {
+            class: CellClass::Sand,
+            properties: CellProperties::MOVEDOWN | CellProperties::MOVEDOWNSIDE,
+        }
+    }
+
+    fn water() -> Self {
+        Self {
+            class: CellClass::Water,
+            properties: CellProperties::MOVEDOWN
+                | CellProperties::MOVESIDE
+                | CellProperties::MOVEDOWNSIDE,
+        }
+    }
+}
+
 pub struct SandWorld {
+    brush: Cell,
     width: usize,
     height: usize,
     scale: usize,
@@ -37,20 +63,16 @@ pub struct SandWorld {
 
 impl SandWorld {
     pub fn new(width: usize, height: usize, scale: usize) -> Self {
-        let mut cells = vec![
-            Cell {
-                class: CellClass::Empty,
-                properties: CellProperties::NONE,
-            };
-            width * height
-        ];
+        let mut cells = vec![Cell::empty(); width * height];
 
         cells[0] = Cell {
             class: CellClass::Sand,
             properties: CellProperties::MOVEDOWN,
         };
         let changes = HashMap::new();
+        let brush = Cell::sand();
         Self {
+            brush,
             width,
             height,
             scale,
@@ -147,44 +169,51 @@ impl SandWorld {
             // pick one of the possible sources
             let source = possible_sources[rand::gen_range(0, possible_sources.len())];
             self.cells[*destination] = self.cells[source];
-            self.cells[source] = Cell {
-                class: CellClass::Empty,
-                properties: CellProperties::NONE,
-            };
+            self.cells[source] = Cell::empty();
         }
         self.changes.clear();
     }
 
     pub fn update(&mut self) {
+        if is_key_down(KeyCode::W) {
+            self.brush = Cell::water();
+        } else if is_key_down(KeyCode::S) {
+            self.brush = Cell::sand();
+        } else if is_key_down(KeyCode::E) {
+            self.brush = Cell::empty();
+        }
+
         if is_mouse_button_down(MouseButton::Left) {
-            let coords = mouse_position();
-            let x = (coords.0 / self.scale as f32) as usize;
-            let y = (coords.1 / self.scale as f32) as usize;
+            match self.brush.class {
+                CellClass::Sand => {
+                    let coords = mouse_position();
+                    let x = (coords.0 / self.scale as f32) as usize;
+                    let y = (coords.1 / self.scale as f32) as usize;
 
-            if self.in_bounds(x, y) {
-                self.set_sell_by_pos(
-                    x,
-                    y,
-                    Cell {
-                        class: CellClass::Sand,
-                        properties: CellProperties::MOVEDOWN | CellProperties::MOVEDOWNSIDE,
-                    },
-                );
-            }
-        } else if is_mouse_button_down(MouseButton::Right) {
-            let coords = mouse_position();
-            let x = (coords.0 / self.scale as f32) as usize;
-            let y = (coords.1 / self.scale as f32) as usize;
+                    if self.in_bounds(x, y) {
+                        self.set_sell_by_pos(x, y, Cell::sand());
+                    }
+                }
+                CellClass::Water => {
+                    let coords = mouse_position();
+                    let x = (coords.0 / self.scale as f32) as usize;
+                    let y = (coords.1 / self.scale as f32) as usize;
 
-            if self.in_bounds(x, y) {
-                self.set_sell_by_pos(
-                    x,
-                    y,
-                    Cell {
-                        class: CellClass::Water,
-                        properties: CellProperties::MOVEDOWN | CellProperties::MOVESIDE,
-                    },
-                );
+                    if self.in_bounds(x, y) {
+                        self.set_sell_by_pos(x, y, Cell::water());
+                    }
+                }
+                CellClass::Empty => {
+                    let coords = mouse_position();
+                    let x = (coords.0 / self.scale as f32) as usize;
+                    let y = (coords.1 / self.scale as f32) as usize;
+
+                    if self.in_bounds(x, y) {
+                        self.set_sell_by_pos(x, y, Cell::empty());
+                    }
+                }
+
+                _ => {}
             }
         }
 
@@ -221,6 +250,15 @@ impl SandWorld {
                 }
                 CellClass::Rock => draw_rectangle(x, y, self.scale as f32, self.scale as f32, GRAY),
             }
+        }
+    }
+
+    pub fn brush(&self) -> &str {
+        match self.brush.class {
+            CellClass::Empty => "Empty",
+            CellClass::Sand => "Sand",
+            CellClass::Water => "Water",
+            CellClass::Rock => "Rock",
         }
     }
 }

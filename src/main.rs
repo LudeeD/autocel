@@ -20,6 +20,13 @@ async fn main() {
         clear_background(WHITE);
 
         draw_text(format!("FPS: {}", get_fps()).as_str(), 0., 16., 32., BLUE);
+        draw_text(
+            format!("Brush: {}", world.brush()).as_str(),
+            0.,
+            32.,
+            32.,
+            BLUE,
+        );
 
         world.update();
 
