@@ -23,6 +23,8 @@ async fn main() {
 
         world.update();
 
+        world.commit_cells();
+
         world.draw();
 
         next_frame().await

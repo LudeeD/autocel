@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bitflags::bitflags;
 use macroquad::prelude::*;
 
@@ -30,34 +32,142 @@ pub struct SandWorld {
     height: usize,
     scale: usize,
     cells: Vec<Cell>,
+    changes: HashMap<usize, Vec<usize>>,
 }
 
 impl SandWorld {
     pub fn new(width: usize, height: usize, scale: usize) -> Self {
-        let cells = vec![
+        let mut cells = vec![
             Cell {
                 class: CellClass::Empty,
                 properties: CellProperties::NONE,
             };
             width * height
         ];
+
+        cells[0] = Cell {
+            class: CellClass::Sand,
+            properties: CellProperties::MOVEDOWN,
+        };
+        let changes = HashMap::new();
         Self {
             width,
             height,
             scale,
             cells,
+            changes,
         }
     }
 
+    fn get_index_by_pos(&self, x: usize, y: usize) -> usize {
+        y * self.width + x
+    }
+
+    fn get_cell_by_index(&self, index: usize) -> &Cell {
+        &self.cells[index]
+    }
+
+    fn get_cell_by_pos(&self, x: usize, y: usize) -> &Cell {
+        &self.cells[y * self.width + x]
+    }
+
+    fn set_sell_by_pos(&mut self, x: usize, y: usize, cell: Cell) {
+        let index = self.get_index_by_pos(x, y);
+        self.cells[index] = cell;
+    }
+
+    fn in_bounds(&self, x: usize, y: usize) -> bool {
+        x < self.width && y < self.height
+    }
+
+    fn is_empty(&self, x: usize, y: usize) -> bool {
+        if !self.in_bounds(x, y) {
+            return false;
+        }
+        let cell = self.get_cell_by_pos(x, y);
+        cell.class == CellClass::Empty
+    }
+
+    // add a move to the changes hashmap
+    fn move_cell(&mut self, x: usize, y: usize, xto: usize, yto: usize) {
+        let index = self.get_index_by_pos(x, y);
+        let index_to = self.get_index_by_pos(xto, yto);
+        let possible_sources = self.changes.entry(index_to).or_insert(Vec::new());
+        possible_sources.push(index);
+    }
+
+    fn move_down(&mut self, x: usize, y: usize) -> bool {
+        let down = self.is_empty(x, y + 1);
+
+        if down {
+            self.move_cell(x, y, x, y + 1);
+        }
+
+        down
+    }
+
+    fn move_down_side(&mut self, x: usize, y: usize) -> bool {
+        let mut down_left = self.is_empty(x - 1, y + 1);
+        let mut down_right = self.is_empty(x + 1, y + 1);
+
+        if down_left && down_right {
+            down_left = rand::gen_range(0, 2) == 0;
+            down_right = !down_left;
+        }
+
+        if down_left {
+            self.move_cell(x, y, x - 1, y + 1);
+        } else if down_right {
+            self.move_cell(x, y, x + 1, y + 1);
+        }
+
+        down_left || down_right
+    }
+
+    pub fn commit_cells(&mut self) {
+        for (destination, possible_sources) in self.changes.iter() {
+            // pick one of the possible sources
+            let source = possible_sources[rand::gen_range(0, possible_sources.len())];
+            self.cells[*destination] = self.cells[source];
+            self.cells[source] = Cell {
+                class: CellClass::Empty,
+                properties: CellProperties::NONE,
+            };
+        }
+        self.changes.clear();
+    }
+
     pub fn update(&mut self) {
-        // choose random cell to alive
-        let random_index = rand::gen_range(0, self.cells.len());
-        let random_type = rand::gen_range(0, 3);
-        match random_type {
-            0 => self.cells[random_index].class = CellClass::Rock,
-            1 => self.cells[random_index].class = CellClass::Sand,
-            2 => self.cells[random_index].class = CellClass::Water,
-            _ => (),
+        if is_mouse_button_down(MouseButton::Left) {
+            let coords = mouse_position();
+            let x = (coords.0 / self.scale as f32) as usize;
+            let y = (coords.1 / self.scale as f32) as usize;
+
+            if self.in_bounds(x, y) {
+                self.set_sell_by_pos(
+                    x,
+                    y,
+                    Cell {
+                        class: CellClass::Sand,
+                        properties: CellProperties::MOVEDOWN | CellProperties::MOVEDOWNSIDE,
+                    },
+                );
+            }
+        }
+
+        for x in 0..self.width {
+            for y in 0..self.height {
+                let cell = self.get_cell_by_pos(x, y);
+                let properties = cell.properties;
+
+                if (properties & CellProperties::MOVEDOWN) != CellProperties::NONE
+                    && self.move_down(x, y)
+                {
+                } else if (properties & CellProperties::MOVEDOWNSIDE) != CellProperties::NONE
+                    && self.move_down_side(x, y)
+                {
+                }
+            }
         }
     }
 
