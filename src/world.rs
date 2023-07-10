@@ -50,6 +50,13 @@ impl Cell {
                 | CellProperties::MOVEDOWNSIDE,
         }
     }
+
+    fn rock() -> Self {
+        Self {
+            class: CellClass::Rock,
+            properties: CellProperties::NONE,
+        }
+    }
 }
 
 pub struct SandWorld {
@@ -181,6 +188,8 @@ impl SandWorld {
             self.brush = Cell::sand();
         } else if is_key_down(KeyCode::E) {
             self.brush = Cell::empty();
+        } else if is_key_down(KeyCode::R) {
+            self.brush = Cell::rock();
         }
 
         if is_mouse_button_down(MouseButton::Left) {
@@ -212,8 +221,15 @@ impl SandWorld {
                         self.set_sell_by_pos(x, y, Cell::empty());
                     }
                 }
+                CellClass::Rock => {
+                    let coords = mouse_position();
+                    let x = (coords.0 / self.scale as f32) as usize;
+                    let y = (coords.1 / self.scale as f32) as usize;
 
-                _ => {}
+                    if self.in_bounds(x, y) {
+                        self.set_sell_by_pos(x, y, Cell::rock());
+                    }
+                }
             }
         }
 
