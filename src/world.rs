@@ -9,6 +9,7 @@ enum CellClass {
     Sand,
     Water,
     Rock,
+    Smoke, // <-- new element
 }
 
 bitflags! {
@@ -18,6 +19,8 @@ bitflags! {
         const MOVEDOWN      = 0b00000001;
         const MOVEDOWNSIDE  = 0b00000010;
         const MOVESIDE      = 0b00000100;
+        const MOVEUP        = 0b00001000; // <-- for upward movement
+        const MOVEUPSIDE    = 0b00010000; // <-- for diagonal upward movement
     }
 }
 
@@ -45,9 +48,7 @@ impl Cell {
     fn water() -> Self {
         Self {
             class: CellClass::Water,
-            properties: CellProperties::MOVEDOWN
-                | CellProperties::MOVESIDE
-                | CellProperties::MOVEDOWNSIDE,
+            properties: CellProperties::MOVEDOWN | CellProperties::MOVESIDE | CellProperties::MOVEDOWNSIDE,
         }
     }
 
@@ -57,8 +58,16 @@ impl Cell {
             properties: CellProperties::NONE,
         }
     }
-}
 
+    // New: smoke moves upward
+    fn smoke() -> Self {
+        Self {
+            class: CellClass::Smoke,
+            // It will try to move straight up first, then diagonally up:
+            properties: CellProperties::MOVEUP | CellProperties::MOVEUPSIDE,
+        }
+    }
+}
 pub struct SandWorld {
     brush: Cell,
     width: usize,
@@ -171,6 +180,36 @@ impl SandWorld {
         down_left || down_right
     }
 
+    fn move_up(&mut self, x: usize, y: usize) -> bool {
+        if y == 0 {
+            return false;
+        }
+        let up = self.is_empty(x, y - 1);
+        if up {
+            self.move_cell(x, y, x, y - 1);
+        }
+        up
+    }
+
+    fn move_up_side(&mut self, x: usize, y: usize) -> bool {
+        if y == 0 {
+            return false;
+        }
+        let mut up_left = x > 0 && self.is_empty(x - 1, y - 1);
+        let mut up_right = self.is_empty(x + 1, y - 1);
+        if up_left && up_right {
+            // Randomly choose between left and right when both options are available:
+            up_left = rand::gen_range(0, 2) == 0;
+            up_right = !up_left;
+        }
+        if up_left {
+            self.move_cell(x, y, x - 1, y - 1);
+        } else if up_right {
+            self.move_cell(x, y, x + 1, y - 1);
+        }
+        up_left || up_right
+    }
+
     pub fn commit_cells(&mut self) {
         for (destination, possible_sources) in self.changes.iter() {
             // pick one of the possible sources
@@ -182,7 +221,9 @@ impl SandWorld {
     }
 
     pub fn update(&mut self) {
-        if is_key_down(KeyCode::W) {
+        if is_key_down(KeyCode::Q) {
+            self.brush = Cell::smoke();
+        } else if is_key_down(KeyCode::W) {
             self.brush = Cell::water();
         } else if is_key_down(KeyCode::S) {
             self.brush = Cell::sand();
@@ -193,43 +234,12 @@ impl SandWorld {
         }
 
         if is_mouse_button_down(MouseButton::Left) {
-            match self.brush.class {
-                CellClass::Sand => {
-                    let coords = mouse_position();
-                    let x = (coords.0 / self.scale as f32) as usize;
-                    let y = (coords.1 / self.scale as f32) as usize;
-
-                    if self.in_bounds(x, y) {
-                        self.set_sell_by_pos(x, y, Cell::sand());
-                    }
-                }
-                CellClass::Water => {
-                    let coords = mouse_position();
-                    let x = (coords.0 / self.scale as f32) as usize;
-                    let y = (coords.1 / self.scale as f32) as usize;
-
-                    if self.in_bounds(x, y) {
-                        self.set_sell_by_pos(x, y, Cell::water());
-                    }
-                }
-                CellClass::Empty => {
-                    let coords = mouse_position();
-                    let x = (coords.0 / self.scale as f32) as usize;
-                    let y = (coords.1 / self.scale as f32) as usize;
-
-                    if self.in_bounds(x, y) {
-                        self.set_sell_by_pos(x, y, Cell::empty());
-                    }
-                }
-                CellClass::Rock => {
-                    let coords = mouse_position();
-                    let x = (coords.0 / self.scale as f32) as usize;
-                    let y = (coords.1 / self.scale as f32) as usize;
-
-                    if self.in_bounds(x, y) {
-                        self.set_sell_by_pos(x, y, Cell::rock());
-                    }
-                }
+            let coords = mouse_position();
+            let x = (coords.0 / self.scale as f32) as usize;
+            let y = (coords.1 / self.scale as f32) as usize;
+            if self.in_bounds(x, y) {
+                // Brush placement now works for all cell types
+                self.set_sell_by_pos(x, y, self.brush);
             }
         }
 
@@ -247,6 +257,8 @@ impl SandWorld {
                 } else if (properties & CellProperties::MOVESIDE) != CellProperties::NONE
                     && self.move_side(x, y)
                 {
+                } else if (properties & CellProperties::MOVEUP) != CellProperties::NONE && self.move_up(x, y) {
+                } else if (properties & CellProperties::MOVEUPSIDE) != CellProperties::NONE && self.move_up_side(x, y) {
                 }
             }
         }
@@ -265,6 +277,9 @@ impl SandWorld {
                     draw_rectangle(x, y, self.scale as f32, self.scale as f32, BLUE)
                 }
                 CellClass::Rock => draw_rectangle(x, y, self.scale as f32, self.scale as f32, GRAY),
+                CellClass::Smoke => {
+                    draw_rectangle(x, y, self.scale as f32, self.scale as f32, LIGHTGRAY)
+                }
             }
         }
     }
@@ -275,6 +290,7 @@ impl SandWorld {
             CellClass::Sand => "Sand",
             CellClass::Water => "Water",
             CellClass::Rock => "Rock",
+            CellClass::Smoke => "Smoke", 
         }
     }
 }
