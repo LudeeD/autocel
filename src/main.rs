@@ -27,6 +27,13 @@ async fn main() {
             32.,
             BLUE,
         );
+        draw_text(
+            format!("Density: {}", world.density()).as_str(),
+            0.,
+            48.,
+            32.,
+            BLUE,
+        );
 
         world.update();
 

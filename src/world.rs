@@ -48,7 +48,9 @@ impl Cell {
     fn water() -> Self {
         Self {
             class: CellClass::Water,
-            properties: CellProperties::MOVEDOWN | CellProperties::MOVESIDE | CellProperties::MOVEDOWNSIDE,
+            properties: CellProperties::MOVEDOWN
+                | CellProperties::MOVESIDE
+                | CellProperties::MOVEDOWNSIDE,
         }
     }
 
@@ -75,6 +77,7 @@ pub struct SandWorld {
     scale: usize,
     cells: Vec<Cell>,
     changes: HashMap<usize, Vec<usize>>,
+    water_cells: usize,
 }
 
 impl SandWorld {
@@ -94,6 +97,7 @@ impl SandWorld {
             scale,
             cells,
             changes,
+            water_cells: 0,
         }
     }
 
@@ -109,9 +113,11 @@ impl SandWorld {
         &self.cells[y * self.width + x]
     }
 
-    fn set_sell_by_pos(&mut self, x: usize, y: usize, cell: Cell) {
+    fn set_sell_by_pos(&mut self, x: usize, y: usize, cell: Cell) -> bool {
         let index = self.get_index_by_pos(x, y);
+        let usefull = self.cells[index].class != cell.class;
         self.cells[index] = cell;
+        usefull
     }
 
     fn in_bounds(&self, x: usize, y: usize) -> bool {
@@ -135,13 +141,27 @@ impl SandWorld {
     }
 
     fn move_down(&mut self, x: usize, y: usize) -> bool {
-        let down = self.is_empty(x, y + 1);
-
-        if down {
-            self.move_cell(x, y, x, y + 1);
+        // Calculate destination position.
+        let dest_y = y + 1;
+        if !self.in_bounds(x, dest_y) {
+            return false;
         }
 
-        down
+        let dest_cell = self.get_cell_by_pos(x, dest_y);
+        let current_cell = self.get_cell_by_pos(x, y);
+
+        // If destination is empty or contains water while current cell is sand,
+        // then allow movement.
+        let can_move = dest_cell.class == CellClass::Empty
+            || (current_cell.class == CellClass::Sand && dest_cell.class == CellClass::Water);
+
+        if can_move {
+            // If swapping with water, you might want to do more than just move the sand;
+            // you might want water to move upward or sideways.
+            self.move_cell(x, y, x, dest_y);
+        }
+
+        can_move
     }
 
     fn move_side(&mut self, x: usize, y: usize) -> bool {
@@ -214,8 +234,14 @@ impl SandWorld {
         for (destination, possible_sources) in self.changes.iter() {
             // pick one of the possible sources
             let source = possible_sources[rand::gen_range(0, possible_sources.len())];
-            self.cells[*destination] = self.cells[source];
-            self.cells[source] = Cell::empty();
+            if self.cells[source].class == CellClass::Sand && self.cells[*destination].class == CellClass::Water {
+                // Swap the sand and water
+                self.cells.swap(source, *destination);
+            } else {
+                // Normal move: overwrite destination and clear source.
+                self.cells[*destination] = self.cells[source];
+                self.cells[source] = Cell::empty();
+            }
         }
         self.changes.clear();
     }
@@ -239,12 +265,13 @@ impl SandWorld {
             let y = (coords.1 / self.scale as f32) as usize;
             if self.in_bounds(x, y) {
                 // Brush placement now works for all cell types
-                self.set_sell_by_pos(x, y, self.brush);
+                let usefull = self.set_sell_by_pos(x, y, self.brush);
+                self.water_cells += if usefull && self.brush.class == CellClass::Water { 1 } else { 0 };
             }
         }
 
         for x in 0..self.width {
-            for y in 0..self.height {
+            for y in (0..self.height).rev() {
                 let cell = self.get_cell_by_pos(x, y);
                 let properties = cell.properties;
 
@@ -257,8 +284,12 @@ impl SandWorld {
                 } else if (properties & CellProperties::MOVESIDE) != CellProperties::NONE
                     && self.move_side(x, y)
                 {
-                } else if (properties & CellProperties::MOVEUP) != CellProperties::NONE && self.move_up(x, y) {
-                } else if (properties & CellProperties::MOVEUPSIDE) != CellProperties::NONE && self.move_up_side(x, y) {
+                } else if (properties & CellProperties::MOVEUP) != CellProperties::NONE
+                    && self.move_up(x, y)
+                {
+                } else if (properties & CellProperties::MOVEUPSIDE) != CellProperties::NONE
+                    && self.move_up_side(x, y)
+                {
                 }
             }
         }
@@ -284,13 +315,17 @@ impl SandWorld {
         }
     }
 
+    pub fn density(&self) -> usize {
+        self.water_cells
+    }
+
     pub fn brush(&self) -> &str {
         match self.brush.class {
             CellClass::Empty => "Empty",
             CellClass::Sand => "Sand",
             CellClass::Water => "Water",
             CellClass::Rock => "Rock",
-            CellClass::Smoke => "Smoke", 
+            CellClass::Smoke => "Smoke",
         }
     }
 }
